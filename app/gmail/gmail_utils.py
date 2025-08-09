@@ -1,6 +1,7 @@
 import base64
 import pickle
 import pprint
+import json
 from googleapiclient.discovery import build
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from email.mime.text import MIMEText
@@ -15,29 +16,21 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import logging
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
-SCOPES = ['https://mail.google.com/']
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 our_email = 'slava.dmitriev1312@gmail.com'
 
-def gmail_authentication():
-  creds = None
-  if os.path.exists("token.json"):
-    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-  if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-      creds.refresh(Request())
-    else:
-      flow = InstalledAppFlow.from_client_secrets_file(
-          "credentials.json", SCOPES
-      )
-      creds = flow.run_local_server(port=0)
-    with open("token.json", "w") as token:
-      token.write(creds.to_json())
+logging.basicConfig(level=logging.DEBUG)
 
+def gmail_authentication():
   try:
-    service = build("gmail", "v1", credentials=creds)
-    return service
+    tok = json.loads(os.environ["GMAIL_TOKEN_JSON"])  # injected from Secret Manager
+    creds = Credentials.from_authorized_user_info(tok, SCOPES)
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    return build("gmail", "v1", credentials=creds)
 
   except HttpError as error:
     return 0    
@@ -50,6 +43,31 @@ def get_unread_emails(service, user_id='me'):
     except HttpError as error:
         print(f'An error occurred: {error}')
         return []
+    
+def poll_unread_emails():
+    logging.info("Authorizing Gmail API...")
+    service = gmail_authentication()
+    logging.info("Authorization successful.")
+    logging.info("Polling unread emails...")
+    # Step 1: List unread emails
+    results = service.users().messages().list(userId='me', q='is:unread label:INBOX', maxResults=10).execute()
+    messages = results.get('messages', [])
+    
+    emails = []
+    for msg in messages:
+        # Step 2: Get full email details
+        email = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+        # Decode body (example for plain text)
+        if 'data' in email['payload'].get('body', {}):
+            body = base64.urlsafe_b64decode(email['payload']['body']['data']).decode('utf-8')
+        else:
+            body = 'No body'  # Handle multipart if needed
+        emails.append({'id': msg['id'], 'subject': next(h['value'] for h in email['payload']['headers'] if h['name'] == 'Subject'), 'body': body})
+        
+        # Step 3: Mark as read (optional)
+        service.users().messages().modify(userId='me', id=msg['id'], body={'removeLabelIds': ['UNREAD']}).execute()
+    
+    return emails
 
 # Adds the attachment with the given filename to the given message
 def add_attachment(message, filename):
@@ -112,22 +130,4 @@ def get_last_email(service, user_id='me'):
         print(f'An error occurred: {error}')
         return None
 # send_message(gmail_authentication(), 'anastasiaroganina@gmail.com', 'Important message', 'Какой фильм смотреть сегодня будем? Шерлок Холмс?')
-service = gmail_authentication()
-messages = get_unread_emails(service)
-body_data = service.users().messages().get(userId='me', id=messages[4]['id']).execute()['payload']['parts'][0]['body']["data"]
-value = service.users().messages().get(userId='me', id=messages[4]['id']).execute()['payload']['parts'][0]["headers"][1]["value"]
-# charset = value = service.users().messages().get(userId='me', id=messages[4]['id']).execute()['payload']['parts'][0]["headers"][1]["charset"]
-print(value)
-# for message in messages:
-#     retrieved_message = service.users().messages().get(userId='me', id=message['id']).execute()
-#     payload = retrieved_message['payload']
-#     parts = payload.get('parts', [])
-#     for part in parts:
-#         if part['mimeType'] == 'text/plain':
-#             data = part['body']['data']
-#             text = base64.urlsafe_b64decode(data).decode('utf-8')
-#             print(f"Plain Text Body: {text}")
-#         elif part['mimeType'] == 'text/html':
-#             data = part['body']['data']
-#             html = base64.urlsafe_b64decode(data).decode('utf-8')
-#             print(f"HTML Body: {html}")
+print(poll_unread_emails())
