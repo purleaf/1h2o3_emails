@@ -4,3 +4,4 @@ google-api-python-client==2.110.0
 google-auth==2.23.4
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.2.0
+google-cloud-storage==2.10.0
