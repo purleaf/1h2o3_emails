@@ -129,5 +129,4 @@ def get_last_email(service, user_id='me'):
     except HttpError as error:
         print(f'An error occurred: {error}')
         return None
-# send_message(gmail_authentication(), 'anastasiaroganina@gmail.com', 'Important message', 'Какой фильм смотреть сегодня будем? Шерлок Холмс?')
-print(poll_unread_emails())
+
