@@ -120,5 +120,8 @@ async def gmail_webhook(request: Request):
 
     print("GMAIL PAYLOAD:", payload)  # should be {'emailAddress': '...', 'historyId': '...'}
     return {"status": "ok"}
+@app.get("/where")
+def where():
+    return {"routes": [r.path for r in app.router.routes]}
 
 app.include_router(router)
