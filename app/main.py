@@ -9,7 +9,6 @@ from gmail.gmail_utils import gmail_authentication
 
 app = FastAPI()
 router = APIRouter()
-app.include_router(router)
 
 
 PROJECT_ID   = os.getenv("PROJECT_ID")
@@ -121,3 +120,5 @@ async def gmail_webhook(request: Request):
 
     print("GMAIL PAYLOAD:", payload)  # should be {'emailAddress': '...', 'historyId': '...'}
     return {"status": "ok"}
+
+app.include_router(router)
