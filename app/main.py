@@ -21,7 +21,7 @@ def verify_pubsub_jwt(auth_header: str):
 
 @app.post("/webhook/gmail")
 async def gmail_webhook(request: Request):
-    # verify_pubsub_jwt(request.headers.get("Authorization"))  # enable once OIDC is wired
+    verify_pubsub_jwt(request.headers.get("Authorization"))  # enable once OIDC is wired
 
     raw = await request.body()
     # Try to parse as JSON
