@@ -1,9 +1,23 @@
-from fastapi import FastAPI, Request
-import base64
-import json
+from fastapi import FastAPI, Request, HTTPException
+from google.oauth2 import id_token
+from google.auth.transport import requests as grequests
+import base64, json, os, binascii
 
 app = FastAPI()
 
+PUSH_AUDIENCE = os.getenv("PUSH_AUDIENCE")
+PUSH_SA_EMAIL = os.getenv("PUSH_SA_EMAIL")
+
+def verify_pubsub_jwt(auth_header: str):
+    # comment out temporarily if you're still testing unauthenticated
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    jwt = auth_header.split(" ", 1)[1]
+    info = id_token.verify_oauth2_token(jwt, grequests.Request(), audience=PUSH_AUDIENCE)
+    if info.get("iss") not in ("https://accounts.google.com", "accounts.google.com"):
+        raise HTTPException(status_code=401, detail="Bad issuer")
+    if info.get("email") != PUSH_SA_EMAIL:
+        raise HTTPException(status_code=401, detail="Wrong token subject")
 
 @app.post("/webhook/gmail")
 async def gmail_webhook(request: Request):
