@@ -1,4 +1,8 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Body
+from pydantic import BaseModel
+import os
+from agent.graph import build_graph
+from agent.kb import add_texts
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import base64, json, os, binascii
@@ -10,13 +14,22 @@ from gmail.gmail_utils import gmail_authentication
 app = FastAPI()
 router = APIRouter()
 
-
+GRAPH = build_graph(os.getenv("CHECKPOINT_DB", "data/sqlite/checkpoints.db"), use_memory=True)
 PROJECT_ID   = os.getenv("PROJECT_ID")
 TOPIC_ID     = os.getenv("TOPIC_ID")
 STATE_BUCKET = os.getenv("STATE_BUCKET")
 STATE_OBJECT = os.getenv("STATE_OBJECT")
 PUSH_AUDIENCE = os.getenv("PUSH_AUDIENCE")
 PUSH_SA_EMAIL = os.getenv("PUSH_SA_EMAIL")
+
+
+class RunInput(BaseModel):
+    gmail_message_id: str
+    thread_id: str | None = None  # reserved for future
+    resume: bool = False          # if you want to resume from checkpoint later
+
+class KBAddBody(BaseModel):
+    texts: list[str]
 
 def _gcs_client():
     return storage.Client(project=PROJECT_ID)
@@ -47,6 +60,22 @@ def verify_pubsub_jwt(auth_header: str):
         raise HTTPException(status_code=401, detail="Bad issuer")
     if info.get("email") != PUSH_SA_EMAIL:
         raise HTTPException(status_code=401, detail="Wrong token subject")
+
+@app.post("/agent/run")
+def agent_run(inp: RunInput):
+    initial_state = {"gmail_message_id": inp.gmail_message_id}
+    # For now we just run straight-through; memory is attached for future resumptions
+    final = GRAPH.invoke(initial_state)
+    return {"ok": True, "state": {k: final.get(k) for k in ("gmail_message_id","draft","confidence","done")}}
+
+@app.post("/kb/add-text")
+def kb_add_text(body: KBAddBody):
+    n = add_texts(body.texts)
+    return {"ok": True, "added": n}
+
+@app.get("/ping")
+def ping():
+    return {"ok": True}
 
 @router.post("/admin/gmail/watch")
 def start_or_renew_watch():

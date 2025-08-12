@@ -5,3 +5,11 @@ google-auth==2.23.4
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.2.0
 google-cloud-storage==2.10.0
+langgraph>=0.2.24
+langchain-core>=0.2.38
+langchain-openai>=0.1.22
+langchain-community
+faiss-cpu
+numpy
+openai>=1.40.0
+langgraph-checkpoint-sqlite
