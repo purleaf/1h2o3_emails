@@ -58,8 +58,16 @@ def verify_pubsub_jwt(auth_header: str):
     info = id_token.verify_oauth2_token(jwt, grequests.Request(), audience=PUSH_AUDIENCE)
     if info.get("iss") not in ("https://accounts.google.com", "accounts.google.com"):
         raise HTTPException(status_code=401, detail="Bad issuer")
-    if info.get("email") != PUSH_SA_EMAIL:
-        raise HTTPException(status_code=401, detail="Wrong token subject")
+    expected_email = os.getenv("PUSH_SA_EMAIL")
+    expected_sub   = os.getenv("PUSH_SA_SUB")
+    if info.get("email") and expected_email:
+        if info["email"] != expected_email:
+            raise HTTPException(status_code=401, detail="Wrong token subject (email)")
+    elif expected_sub and info.get("sub"):
+        if info["sub"] != expected_sub:
+            raise HTTPException(status_code=401, detail="Wrong token subject (sub)")
+    else:
+        raise HTTPException(status_code=401, detail="Insufficient token claims")
 
 @app.post("/agent/run")
 def agent_run(inp: RunInput):
