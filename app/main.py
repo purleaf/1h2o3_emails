@@ -8,7 +8,7 @@ from google.auth.transport import requests as grequests
 import base64, json, os, binascii
 from google.cloud import storage
 import json, time, os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from gmail.gmail_utils import gmail_authentication
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
@@ -122,9 +122,8 @@ def get_state():
     return load_state()
 
 @app.post("/webhook/gmail")
-async def gmail_webhook(request: Request):
-    verify_pubsub_jwt(request.headers.get("Authorization"))  # enable once OIDC is wired
-
+async def gmail_webhook(request: Request, background_tasks: BackgroundTasks):
+    verify_pubsub_jwt(request.headers.get("Authorization"))
     raw = await request.body()
     # Try to parse as JSON
     try:
@@ -165,9 +164,42 @@ async def gmail_webhook(request: Request):
         if not payload:
             print("No envelope and empty body; ignoring.")
             return {"status": "ignored"}
-
-    print("GMAIL PAYLOAD:", payload)  # should be {'emailAddress': '...', 'historyId': '...'}
+    hist = str(payload.get("historyId") or "")
+    background_tasks.add_task(process_history_changes, hist)
     return {"status": "ok"}
+
+def process_history_changes(notification_history_id: str):
+    svc = gmail_authentication()
+    state = load_state()
+    start = str(state.get("last_history_id") or "")
+    if not start:
+        state["last_history_id"] = int(notification_history_id)
+        save_state(state)
+        return
+
+    new_ids, page_token, highest = set(), None, int(start)
+    while True:
+        req = {"userId":"me", "startHistoryId": start, "labelId":"INBOX", "maxResults":500}
+        if page_token: req["pageToken"] = page_token
+        resp = svc.users().history().list(**req).execute()
+        for h in resp.get("history", []):
+            highest = max(highest, int(h.get("id", start)))
+            for added in h.get("messagesAdded", []):
+                new_ids.add(added["message"]["id"])
+        page_token = resp.get("nextPageToken")
+        if not page_token: break
+
+    for mid in sorted(new_ids):
+        try:
+            cfg = {"configurable": {"thread_id": mid}}
+            GRAPH.invoke({"gmail_message_id": mid}, config=cfg)
+        except Exception as e:
+            print("Agent error", mid, "->", e)
+
+    state["last_history_id"] = max(highest, int(notification_history_id))
+    save_state(state)
+
+
 @app.get("/where")
 def where():
     return {"routes": [r.path for r in app.router.routes]}
