@@ -8,8 +8,10 @@ from google.auth.transport import requests as grequests
 import base64, json, os, binascii
 from google.cloud import storage
 import json, time, os
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from gmail.gmail_utils import gmail_authentication
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
 
 app = FastAPI()
 router = APIRouter()
@@ -87,14 +89,23 @@ def ping():
 
 @router.post("/admin/gmail/watch")
 def start_or_renew_watch():
-    service = gmail_authentication()
+    try:
+        service = gmail_authentication()
+    except RefreshError as e:
+        raise HTTPException(status_code=500, detail=f"Gmail auth refresh failed: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gmail auth failed: {e}")
     topic_name = f"projects/{PROJECT_ID}/topics/{TOPIC_ID}"
-    body = {
-        "topicName": topic_name,
-        "labelIds": ["INBOX"],             # only INBOX changes
-        "labelFilterBehavior": "INCLUDE"   # include only listed labels
-    }
-    resp = service.users().watch(userId="me", body=body).execute()
+    try:
+        body = {
+            "topicName": topic_name,
+            "labelIds": ["INBOX"],             # only INBOX changes
+            "labelFilterBehavior": "INCLUDE"   # include only listed labels
+        }
+        resp = service.users().watch(userId="me", body=body).execute()
+    except HttpError as he:
+        # This shows exact Gmail error, e.g. "Requested entity was not found" or "Insufficient Permission"
+        raise HTTPException(status_code=he.status_code, detail=str(he))
     # resp: { "historyId": "...", "expiration": 172... (ms epoch) }
     state = load_state()
     state["last_history_id"] = int(resp["historyId"])
