@@ -194,7 +194,7 @@ def process_history_changes(notification_history_id: str):
             cfg = {"configurable": {"thread_id": mid}}
             GRAPH.invoke({"gmail_message_id": mid}, config=cfg)
         except Exception as e:
-            print("Agent error", mid, "->", e)
+            print("Agent's error", mid, "->", e)
 
     state["last_history_id"] = max(highest, int(notification_history_id))
     save_state(state)
