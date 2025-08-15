@@ -74,7 +74,7 @@ def verify_pubsub_jwt(auth_header: str):
 @app.post("/agent/run")
 def agent_run(inp: RunInput):
     initial_state = {"gmail_message_id": inp.gmail_message_id}
-    # For now we just run straight-through; memory is attached for future resumptions
+    # For now I just run straight-through; memory is attached for future resumptions
     final = GRAPH.invoke(initial_state)
     return {"ok": True, "state": {k: final.get(k) for k in ("gmail_message_id","draft","confidence","done")}}
 
@@ -104,9 +104,9 @@ def start_or_renew_watch():
         }
         resp = service.users().watch(userId="me", body=body).execute()
     except HttpError as he:
-        # This shows exact Gmail error, e.g. "Requested entity was not found" or "Insufficient Permission"
+        
         raise HTTPException(status_code=he.status_code, detail=str(he))
-    # resp: { "historyId": "...", "expiration": 172... (ms epoch) }
+    
     state = load_state()
     state["last_history_id"] = int(resp["historyId"])
     state["watch_expiration_ms"] = int(resp["expiration"])
@@ -116,7 +116,7 @@ def start_or_renew_watch():
     save_state(state)
     return {"ok": True, "state": state}
 
-# (optional) quick GET to see current state
+
 @router.get("/admin/gmail/state")
 def get_state():
     return load_state()
@@ -129,7 +129,7 @@ async def gmail_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         body = json.loads(raw or b"{}")
     except json.JSONDecodeError:
-        # If payload unwrapping is ON, Pub/Sub may send raw bytes; treat as text JSON
+        # If payload unwrapping is ON, Pub/Sub may send raw bytes then treat as text JSON
         body = {}
 
     # Case A: payload unwrapping OFF (default) → envelope with message.data (base64)

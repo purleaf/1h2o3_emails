@@ -9,7 +9,7 @@ FAISS_INDEX = os.path.join(FAISS_DIR, "index")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 
 def _emb() -> OpenAIEmbeddings:
-    # expects OPENAI_API_KEY in env
+    
     return OpenAIEmbeddings(model=EMBED_MODEL)
 
 def load_or_create() -> FAISS:
